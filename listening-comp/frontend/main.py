@@ -1,100 +1,292 @@
 import streamlit as st
+from typing import Dict
+import json
+from collections import Counter
+import re
+
 import sys
 import os
-import json
-from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from backend.get_transcript import YouTubeTranscriptDownloader
+from backend.chat import BedrockChat
 from backend.question_generator import QuestionGenerator
-from backend.audio_generator import AudioGenerator
+
 
 # Page config
 st.set_page_config(
-    page_title="JLPT Listening Practice",
-    page_icon="🎧",
+    page_title="Japanese Learning Assistant",
+    page_icon="🎌",
     layout="wide"
 )
 
-def load_stored_questions():
-    """Load previously stored questions from JSON file"""
-    questions_file = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "backend/data/stored_questions.json"
-    )
-    if os.path.exists(questions_file):
-        with open(questions_file, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return {}
+# Initialize session state
+if 'transcript' not in st.session_state:
+    st.session_state.transcript = None
+if 'messages' not in st.session_state:
+    st.session_state.messages = []
 
-def save_question(question, practice_type, topic, audio_file=None):
-    """Save a generated question to JSON file"""
-    questions_file = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-        "backend/data/stored_questions.json"
+def render_header():
+    """Render the header section"""
+    st.title("🎌 Japanese Learning Assistant")
+    st.markdown("""
+    Transform YouTube transcripts into interactive Japanese learning experiences.
+    
+    This tool demonstrates:
+    - Base LLM Capabilities
+    - RAG (Retrieval Augmented Generation)
+    - Amazon Bedrock Integration
+    - Agent-based Learning Systems
+    """)
+
+def render_sidebar():
+    """Render the sidebar with component selection"""
+    with st.sidebar:
+        st.header("Development Stages")
+        
+        # Main component selection
+        selected_stage = st.radio(
+            "Select Stage:",
+            [
+                "1. Chat with Nova",
+                "2. Raw Transcript",
+                "3. Structured Data",
+                "4. RAG Implementation",
+                "5. Interactive Learning"
+            ]
+        )
+        
+        # Stage descriptions
+        stage_info = {
+            "1. Chat with Nova": """
+            **Current Focus:**
+            - Basic Japanese learning
+            - Understanding LLM capabilities
+            - Identifying limitations
+            """,
+            
+            "2. Raw Transcript": """
+            **Current Focus:**
+            - YouTube transcript download
+            - Raw text visualization
+            - Initial data examination
+            """,
+            
+            "3. Structured Data": """
+            **Current Focus:**
+            - Text cleaning
+            - Dialogue extraction
+            - Data structuring
+            """,
+            
+            "4. RAG Implementation": """
+            **Current Focus:**
+            - Bedrock embeddings
+            - Vector storage
+            - Context retrieval
+            """,
+            
+            "5. Interactive Learning": """
+            **Current Focus:**
+            - Scenario generation
+            - Audio synthesis
+            - Interactive practice
+            """
+        }
+        
+        st.markdown("---")
+        st.markdown(stage_info[selected_stage])
+        
+        return selected_stage
+
+def render_chat_stage():
+    """Render an improved chat interface"""
+    st.header("Chat with Nova")
+
+    # Initialize BedrockChat instance if not in session state
+    if 'bedrock_chat' not in st.session_state:
+        st.session_state.bedrock_chat = BedrockChat()
+
+    # Introduction text
+    st.markdown("""
+    Start by exploring Nova's base Japanese language capabilities. Try asking questions about Japanese grammar, 
+    vocabulary, or cultural aspects.
+    """)
+
+    # Initialize chat history if not exists
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    # Display chat messages
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"], avatar="🧑‍💻" if message["role"] == "user" else "🤖"):
+            st.markdown(message["content"])
+
+    # Chat input area
+    if prompt := st.chat_input("Ask about Japanese language..."):
+        # Process the user input
+        process_message(prompt)
+
+    # Example questions in sidebar
+    with st.sidebar:
+        st.markdown("### Try These Examples")
+        example_questions = [
+            "How do I say 'Where is the train station?' in Japanese?",
+            "Explain the difference between は and が",
+            "What's the polite form of 食べる?",
+            "How do I count objects in Japanese?",
+            "What's the difference between こんにちは and こんばんは?",
+            "How do I ask for directions politely?"
+        ]
+        
+        for q in example_questions:
+            if st.button(q, use_container_width=True, type="secondary"):
+                # Process the example question
+                process_message(q)
+                st.rerun()
+
+    # Add a clear chat button
+    if st.session_state.messages:
+        if st.button("Clear Chat", type="primary"):
+            st.session_state.messages = []
+            st.rerun()
+
+def process_message(message: str):
+    """Process a message and generate a response"""
+    # Add user message to state and display
+    st.session_state.messages.append({"role": "user", "content": message})
+    with st.chat_message("user", avatar="🧑‍💻"):
+        st.markdown(message)
+
+    # Generate and display assistant's response
+    with st.chat_message("assistant", avatar="🤖"):
+        response = st.session_state.bedrock_chat.generate_response(message)
+        if response:
+            st.markdown(response)
+            st.session_state.messages.append({"role": "assistant", "content": response})
+
+
+
+def count_characters(text):
+    """Count Japanese and total characters in text"""
+    if not text:
+        return 0, 0
+        
+    def is_japanese(char):
+        return any([
+            '\u4e00' <= char <= '\u9fff',  # Kanji
+            '\u3040' <= char <= '\u309f',  # Hiragana
+            '\u30a0' <= char <= '\u30ff',  # Katakana
+        ])
+    
+    jp_chars = sum(1 for char in text if is_japanese(char))
+    return jp_chars, len(text)
+
+def render_transcript_stage():
+    """Render the raw transcript stage"""
+    st.header("Raw Transcript Processing")
+    
+    # URL input
+    url = st.text_input(
+        "YouTube URL",
+        placeholder="Enter a Japanese lesson YouTube URL"
     )
     
-    # Load existing questions
-    stored_questions = load_stored_questions()
+    # Download button and processing
+    if url:
+        if st.button("Download Transcript"):
+            try:
+                downloader = YouTubeTranscriptDownloader()
+                transcript = downloader.get_transcript(url)
+                if transcript:
+                    # Store the raw transcript text in session state
+                    transcript_text = "\n".join([entry['text'] for entry in transcript])
+                    st.session_state.transcript = transcript_text
+                    st.success("Transcript downloaded successfully!")
+                else:
+                    st.error("No transcript found for this video.")
+            except Exception as e:
+                st.error(f"Error downloading transcript: {str(e)}")
+
+    col1, col2 = st.columns(2)
     
-    # Create a unique ID for the question using timestamp
-    question_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+    with col1:
+        st.subheader("Raw Transcript")
+        if st.session_state.transcript:
+            st.text_area(
+                label="Raw text",
+                value=st.session_state.transcript,
+                height=400,
+                disabled=True
+            )
     
-    # Add metadata
-    question_data = {
-        "question": question,
-        "practice_type": practice_type,
-        "topic": topic,
-        "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-        "audio_file": audio_file
-    }
+        else:
+            st.info("No transcript loaded yet")
     
-    # Add to stored questions
-    stored_questions[question_id] = question_data
+    with col2:
+        st.subheader("Transcript Stats")
+        if st.session_state.transcript:
+            # Calculate stats
+            jp_chars, total_chars = count_characters(st.session_state.transcript)
+            total_lines = len(st.session_state.transcript.split('\n'))
+            
+            # Display stats
+            st.metric("Total Characters", total_chars)
+            st.metric("Japanese Characters", jp_chars)
+            st.metric("Total Lines", total_lines)
+        else:
+            st.info("Load a transcript to see statistics")
+
+def render_structured_stage():
+    """Render the structured data stage"""
+    st.header("Structured Data Processing")
     
-    # Save back to file
-    os.makedirs(os.path.dirname(questions_file), exist_ok=True)
-    with open(questions_file, 'w', encoding='utf-8') as f:
-        json.dump(stored_questions, f, ensure_ascii=False, indent=2)
+    col1, col2 = st.columns(2)
     
-    return question_id
+    with col1:
+        st.subheader("Dialogue Extraction")
+        # Placeholder for dialogue processing
+        st.info("Dialogue extraction will be implemented here")
+        
+    with col2:
+        st.subheader("Data Structure")
+        # Placeholder for structured data view
+        st.info("Structured data view will be implemented here")
+
+def render_rag_stage():
+    """Render the RAG implementation stage"""
+    st.header("RAG System")
+    
+    # Query input
+    query = st.text_input(
+        "Test Query",
+        placeholder="Enter a question about Japanese..."
+    )
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("Retrieved Context")
+        # Placeholder for retrieved contexts
+        st.info("Retrieved contexts will appear here")
+        
+    with col2:
+        st.subheader("Generated Response")
+        # Placeholder for LLM response
+        st.info("Generated response will appear here")
+
 
 def render_interactive_stage():
     """Render the interactive learning stage"""
-    # Initialize session state
+    st.header("Interactive Learning")
+    
+    # Initialize question generator if not in session state
     if 'question_generator' not in st.session_state:
         st.session_state.question_generator = QuestionGenerator()
-    if 'audio_generator' not in st.session_state:
-        st.session_state.audio_generator = AudioGenerator()
     if 'current_question' not in st.session_state:
         st.session_state.current_question = None
     if 'feedback' not in st.session_state:
         st.session_state.feedback = None
-    if 'current_practice_type' not in st.session_state:
-        st.session_state.current_practice_type = None
-    if 'current_topic' not in st.session_state:
-        st.session_state.current_topic = None
-    if 'current_audio' not in st.session_state:
-        st.session_state.current_audio = None
-        
-    # Load stored questions for sidebar
-    stored_questions = load_stored_questions()
-    
-    # Create sidebar
-    with st.sidebar:
-        st.header("Saved Questions")
-        if stored_questions:
-            for qid, qdata in stored_questions.items():
-                # Create a button for each question
-                button_label = f"{qdata['practice_type']} - {qdata['topic']}\n{qdata['created_at']}"
-                if st.button(button_label, key=qid):
-                    st.session_state.current_question = qdata['question']
-                    st.session_state.current_practice_type = qdata['practice_type']
-                    st.session_state.current_topic = qdata['topic']
-                    st.session_state.current_audio = qdata.get('audio_file')
-                    st.session_state.feedback = None
-                    st.rerun()
-        else:
-            st.info("No saved questions yet. Generate some questions to see them here!")
     
     # Practice type selection
     practice_type = st.selectbox(
@@ -116,17 +308,10 @@ def render_interactive_stage():
     # Generate new question button
     if st.button("Generate New Question"):
         section_num = 2 if practice_type == "Dialogue Practice" else 3
-        new_question = st.session_state.question_generator.generate_similar_question(
+        st.session_state.current_question = st.session_state.question_generator.generate_similar_question(
             section_num, topic
         )
-        st.session_state.current_question = new_question
-        st.session_state.current_practice_type = practice_type
-        st.session_state.current_topic = topic
         st.session_state.feedback = None
-        
-        # Save the generated question
-        save_question(new_question, practice_type, topic)
-        st.session_state.current_audio = None
     
     if st.session_state.current_question:
         st.subheader("Practice Scenario")
@@ -200,53 +385,33 @@ def render_interactive_stage():
         
         with col2:
             st.subheader("Audio")
-            if st.session_state.current_audio:
-                # Display audio player
-                st.audio(st.session_state.current_audio)
-            elif st.session_state.current_question:
-                # Show generate audio button
-                if st.button("Generate Audio"):
-                    with st.spinner("Generating audio..."):
-                        try:
-                            # Clear any previous audio
-                            if st.session_state.current_audio and os.path.exists(st.session_state.current_audio):
-                                try:
-                                    os.unlink(st.session_state.current_audio)
-                                except Exception:
-                                    pass
-                            st.session_state.current_audio = None
-                            
-                            # Generate new audio
-                            audio_file = st.session_state.audio_generator.generate_audio(
-                                st.session_state.current_question
-                            )
-                            
-                            # Verify the audio file exists
-                            if not os.path.exists(audio_file):
-                                raise Exception("Audio file was not created")
-                                
-                            st.session_state.current_audio = audio_file
-                            
-                            # Update stored question with audio file
-                            save_question(
-                                st.session_state.current_question,
-                                st.session_state.current_practice_type,
-                                st.session_state.current_topic,
-                                audio_file
-                            )
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error generating audio: {str(e)}")
-                            # Clear the audio state on error
-                            st.session_state.current_audio = None
-            else:
-                st.info("Generate a question to create audio.")
+            st.info("Audio feature coming soon!")
     else:
         st.info("Click 'Generate New Question' to start practicing!")
 
 def main():
-    st.title("JLPT Listening Practice")
-    render_interactive_stage()
+    render_header()
+    selected_stage = render_sidebar()
+    
+    # Render appropriate stage
+    if selected_stage == "1. Chat with Nova":
+        render_chat_stage()
+    elif selected_stage == "2. Raw Transcript":
+        render_transcript_stage()
+    elif selected_stage == "3. Structured Data":
+        render_structured_stage()
+    elif selected_stage == "4. RAG Implementation":
+        render_rag_stage()
+    elif selected_stage == "5. Interactive Learning":
+        render_interactive_stage()
+    
+    # Debug section at the bottom
+    with st.expander("Debug Information"):
+        st.json({
+            "selected_stage": selected_stage,
+            "transcript_loaded": st.session_state.transcript is not None,
+            "chat_messages": len(st.session_state.messages)
+        })
 
 if __name__ == "__main__":
     main()
