@@ -13,7 +13,6 @@ eg. LLM_MODEL_ID="llama3.2:1b"
 #### Linux
 
 Get your IP address
-
 ```sh
 sudo apt install net-tools
 ifconfig
@@ -23,28 +22,30 @@ Or you can try this way `$(hostname -I | awk '{print $1}')`
 
 HOST_IP=$(hostname -I | awk '{print $1}') NO_PROXY=localhost LLM_ENDPOINT_PORT=9000 LLM_MODEL_ID="llama3.2:1b" docker compose up
 
+
 ### Ollama API
 
 Once the Ollama server is running we can make API calls to the ollama API
 
 https://github.com/ollama/ollama/blob/main/docs/api.md
 
+
 ## Download (Pull) a model
 
-curl http://localhost:9000/api/pull -d '{
-"model": "llama3.2:1b"
+curl http://localhost:8008/api/pull -d '{
+  "model": "llama3.2:1b"
 }'
 
 ## Generate a Request
 
-curl http://localhost:9000/api/generate -d '{
-"model": "llama3.2:1b",
-"prompt": "Why is the sky blue?"
+curl http://localhost:/api/generate -d '{
+  "model": "llama3.2:1b",
+  "prompt": "Why is the sky blue?"
 }'
 
 # Technical Uncertainty
 
-Q Does bridge mode mean we can only access Ollama API with another model in the docker compose?
+Q Does bridge mode mean we can only accses Ollama API with another model in the docker compose?
 
 A No, the host machine will be able to access it
 
