@@ -40,6 +40,7 @@ async def search_web_serp(query: str, max_results: int = 5) -> List[Dict[str, st
             "api_key": api_key
         }
         
+        
         logger.debug(f"Sending request to SERP API with params: {params}")
         try:
             search = GoogleSearch(params)
