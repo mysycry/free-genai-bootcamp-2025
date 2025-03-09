@@ -10,11 +10,12 @@ They have 300 active students, and students are located within the city of Nagas
 
 We are assuming that the Open-source LLMs that we choose will be powerful enough to run on hardware with an investment of 10-15K.
 
+
 We're just going to hook up a single serve in our office to the internet and we should have enough bandwidth to serve the 300 students.
 
 ## Data Strategy
 
-There is a concern of copyrighted materials, so we must purchase and supply materials and store them for access in our database.
+There is a concerned of copyrighted materials, so we must purchase and supply materials and store them for access in our database.
 
 ## Considerations
 

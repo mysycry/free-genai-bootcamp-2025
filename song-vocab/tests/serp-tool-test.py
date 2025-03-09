@@ -12,4 +12,3 @@ async def test_serp_tool():
 
 if __name__ == "__main__":
     asyncio.run(test_serp_tool())
-    

@@ -1,7 +1,6 @@
 ## Perplexity Powered Assistant Guide
 
 ### Which Model
-
 Perplexity Pro uses their own model by default, but specific models can be chosen in user settings.
 
 https://www.perplexity.ai/hub/technical-faq/what-model-does-perplexity-use-and-what-is-the-perplexity-model

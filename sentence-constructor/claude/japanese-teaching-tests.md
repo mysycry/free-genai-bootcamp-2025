@@ -3,8 +3,7 @@
 ## 1. Sentence Complexity Test Cases
 
 ### 1.1 Simple Sentences
-
-````xml
+```xml
 <test-cases>
     <case id="simple-1">
         <english>I eat bread.</english>
@@ -291,4 +290,3 @@
         <purpose>Maintain consistent verb form handling</purpose>
     </reference>
 </cross-references>
-````
